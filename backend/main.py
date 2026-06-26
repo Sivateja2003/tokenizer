@@ -36,6 +36,7 @@ VERDICT_URL = (
     "refs/heads/main/ch02/01_main-chapter-code/the-verdict.txt"
 )
 VERDICT_PATH = os.path.join(os.path.dirname(__file__), "the-verdict.txt")
+PENDING_BPE_PATH = os.path.join(os.path.dirname(__file__), "pending_bpe_tokens.txt")
 
 word_to_id: dict[str, int] = {}
 id_to_word: dict[int, str] = {}
@@ -219,6 +220,18 @@ def add_tokens(req: AddTokensRequest):
         else:
             rejected_tokens.append(token)
             
+    if rejected_tokens:
+        existing_pending = set()
+        if os.path.exists(PENDING_BPE_PATH):
+            with open(PENDING_BPE_PATH, "r", encoding="utf-8") as f:
+                existing_pending = set(line.strip() for line in f)
+        
+        with open(PENDING_BPE_PATH, "a", encoding="utf-8") as f:
+            for rt in rejected_tokens:
+                if rt not in existing_pending:
+                    f.write(rt + "\n")
+                    existing_pending.add(rt)
+                    
     return {
         "status": "success", 
         "added_count": added_count, 
