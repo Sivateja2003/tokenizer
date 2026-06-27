@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import TokenDisplay from './TokenDisplay';
 
 const LEGEND_COLORS = 6;
@@ -60,9 +61,41 @@ function TokenIdPill({ token, id, isUnk, index }) {
   );
 }
 
-export default function TokenizerPanel({ result, isSimple }) {
+export default function TokenizerPanel({ result, isSimple, onTokensAdded }) {
+  const [reviewing, setReviewing] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [rejectedTokens, setRejectedTokens] = useState([]);
+
   const accentColor = isSimple ? '#5c8fd9' : '#9c7dce';
-  const unkCount = result ? result.tokens.filter(t => t.is_unk).length : 0;
+  const unkTokens = result ? result.tokens.filter(t => t.is_unk) : [];
+  const unkCount = unkTokens.length;
+  const uniqueUnks = Array.from(new Set(unkTokens.map(t => t.token)));
+
+  const handleAddTokens = async () => {
+    setSubmitting(true);
+    setRejectedTokens([]);
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/vocab/add`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tokens: uniqueUnks })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.rejected_tokens && data.rejected_tokens.length > 0) {
+          setRejectedTokens(data.rejected_tokens);
+          if (data.added_count > 0 && onTokensAdded) onTokensAdded();
+        } else {
+          setReviewing(false);
+          if (onTokensAdded) onTokensAdded();
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <div style={{
@@ -191,8 +224,70 @@ export default function TokenizerPanel({ result, isSimple }) {
           fontSize: '12px',
           color: 'var(--tok-unk-fg)',
         }}>
-          <strong>⚠ {unkCount} unknown token{unkCount > 1 ? 's' : ''}</strong>
-          {' '}— words not present in the corpus vocabulary are mapped to <code style={{ fontSize: '11px' }}>&lt;UNK&gt;</code> (ID {result.tokens.find(t => t.is_unk)?.token_id ?? '—'})
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div>
+              <strong>⚠ {unkCount} unknown token{unkCount > 1 ? 's' : ''}</strong>
+              {' '}— words not present in "The Verdict" vocabulary are mapped to <code style={{ fontSize: '11px' }}>&lt;UNK&gt;</code>
+            </div>
+            <button
+              onClick={() => setReviewing(!reviewing)}
+              style={{
+                padding: '4px 10px',
+                background: 'transparent',
+                border: '1px solid var(--tok-unk-fg)',
+                borderRadius: '4px',
+                color: 'var(--tok-unk-fg)',
+                cursor: 'pointer',
+                fontSize: '11px',
+                whiteSpace: 'nowrap',
+                marginLeft: '12px',
+              }}
+            >
+              {reviewing ? 'Cancel' : 'Review New Tokens'}
+            </button>
+          </div>
+          {reviewing && (
+            <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px dashed var(--tok-unk-fg)' }}>
+              <p style={{ marginBottom: '8px', fontWeight: 600 }}>The following new words will be added to the vocabulary:</p>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '12px', maxHeight: '120px', overflowY: 'auto' }}>
+                {uniqueUnks.map(word => (
+                  <span key={word} style={{ padding: '2px 6px', background: 'rgba(0,0,0,0.2)', borderRadius: '3px', fontFamily: 'monospace' }}>
+                    {word}
+                  </span>
+                ))}
+              </div>
+              <button
+                onClick={handleAddTokens}
+                disabled={submitting}
+                style={{
+                  padding: '6px 12px',
+                  background: 'var(--tok-unk-fg)',
+                  border: 'none',
+                  borderRadius: '4px',
+                  color: '#000',
+                  cursor: submitting ? 'not-allowed' : 'pointer',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  opacity: submitting ? 0.7 : 1,
+                }}
+              >
+                {submitting ? 'Adding...' : 'Approve & Add Tokens'}
+              </button>
+
+              {rejectedTokens.length > 0 && (
+                <div style={{ marginTop: '12px', padding: '8px', background: 'rgba(255, 0, 0, 0.1)', border: '1px solid var(--danger)', borderRadius: '4px', color: '#ff6b6b' }}>
+                  <strong>{rejectedTokens.length} token(s) rejected:</strong> They do not exist as a single token in the TikToken vocabulary.
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '6px' }}>
+                    {rejectedTokens.map(word => (
+                      <span key={word} style={{ padding: '2px 4px', background: 'rgba(0,0,0,0.3)', borderRadius: '3px', fontFamily: 'monospace' }}>
+                        {word}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
